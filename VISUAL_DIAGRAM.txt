@@ -1,0 +1,283 @@
+﻿┌─────────────────────────────────────────────────────────────────────────────┐
+│                                                                             │
+│              🧠 CONTEXT CACHING - Sistema de Memoria Persistente            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                          FLUJO DE FUNCIONAMIENTO                          ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ PASO 1: Usuario envía primer mensaje a un proyecto                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+   │
+   │  POST /api/ai/generate
+   │  { prompt: "Crea logo", projectId: "proj-123" }
+   │
+   ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Backend verifica: ¿Proyecto tiene caché activo?                            │
+│ • Busca: Project.geminiCacheId                                              │
+│ • Verifica: Project.cacheExpiry > now()                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+   │
+   ├─── NO tiene caché ───────────────────────────────────┐
+   │                                                       │
+   │                                                       ▼
+   │                                            ┌──────────────────────────┐
+   │                                            │ createChatSession()      │
+   │                                            │ • System prompt: "Eres   │
+   │                                            │   Dazly, experto..."     │
+   │                                            │ • TTL: 1 hora            │
+   │                                            │ • Guarda cacheId en BD   │
+   │                                            └──────────────────────────┘
+   │                                                       │
+   └───── SÍ tiene caché ─────────────────────────────────┤
+                                                           │
+                                                           ▼
+                                              ┌──────────────────────────┐
+                                              │ continueChatWithCache()  │
+                                              │ • Envía solo mensaje     │
+                                              │   actual (~100 tokens)   │
+                                              │ • Gemini usa memoria     │
+                                              │   del servidor           │
+                                              └──────────────────────────┘
+                                                           │
+                                                           ▼
+                                              ┌──────────────────────────┐
+                                              │ Respuesta de Gemini      │
+                                              │ • Con contexto completo  │
+                                              │ • Memoria de imágenes    │
+                                              └──────────────────────────┘
+                                                           │
+                                                           ▼
+                                              ┌──────────────────────────┐
+                                              │ Guardar en BD            │
+                                              │ • Message (user)         │
+                                              │ • Message (assistant)    │
+                                              │ • Generation history     │
+                                              └──────────────────────────┘
+                                                           │
+                                                           ▼
+                                              ┌──────────────────────────┐
+                                              │ Respuesta al Frontend    │
+                                              │ {                        │
+                                              │   imageUrl: "...",       │
+                                              │   cacheInfo: {           │
+                                              │     usedCache: true      │
+                                              │   }                      │
+                                              │ }                        │
+                                              └──────────────────────────┘
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                       COMPARATIVA: SIN CACHÉ vs CON CACHÉ                 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ❌ SIN CACHÉ (Sistema Anterior)                                            │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Mensaje 1:  [System + Msg1]                               = 1,000 tokens
+Mensaje 2:  [System + Msg1 + Resp1 + Msg2]                = 3,000 tokens
+Mensaje 3:  [System + Msg1 + Resp1 + Msg2 + Resp2 + Msg3] = 8,000 tokens
+                                                   TOTAL: 12,000 tokens 💸
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ✅ CON CACHÉ (Sistema Nuevo)                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Setup:      [System] → Cache (una sola vez)               = 800 tokens
+Mensaje 1:  [Msg1] + usa cache                            = 100 tokens
+Mensaje 2:  [Msg2] + usa cache                            = 80 tokens
+Mensaje 3:  [Msg3] + usa cache                            = 90 tokens
+                                                   TOTAL: 1,070 tokens 💰
+
+                        🎉 AHORRO: 91% de tokens!
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                          ARQUITECTURA DE BASE DE DATOS                    ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Project                                                                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│ id              String                                                   │
+│ name            String                                                   │
+│ userId          String                                                   │
+│ geminiCacheId   String?    🆕 ID de sesión en Gemini                    │
+│ cacheExpiry     DateTime?  🆕 Cuándo expira (TTL: 1h)                   │
+│ createdAt       DateTime                                                 │
+│ updatedAt       DateTime                                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    │ 1:N
+                                    ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Message                                                                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│ id              String                                                   │
+│ role            String      ("user" | "assistant")                       │
+│ content         String      (Texto del mensaje)                          │
+│ imageUrl        String?     (URL de imagen generada)                     │
+│ imagePrompt     String?     (Prompt usado)                               │
+│ projectId       String      (FK → Project)                               │
+│ createdAt       DateTime                                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                            CASOS DE USO REALES                            ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🎨 CASO 1: Diseño Iterativo de Logo                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Usuario: "Crea un logo minimalista para cafetería"
+Dazly:   [Genera logo] + Guarda en caché
+         
+Usuario: "Hazlo más vintage"
+Dazly:   [Lee caché] "Entiendo, voy a modificar el logo anterior con..."
+         ✅ Recuerda el logo original sin reenviarlo
+
+Usuario: "Ahora en tonos marrones"
+Dazly:   [Lee caché] "Perfecto, aplicando tonos marrones al diseño vintage..."
+         ✅ Recuerda AMBOS logos anteriores
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 📸 CASO 2: Edición de Fotos de Producto                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Usuario: [Sube foto] "¿Qué te parece esta foto de producto?"
+Dazly:   [Analiza] "La iluminación es buena pero el fondo distrae..."
+         
+Usuario: [Sube foto mejorada] "¿Mejor así?"
+Dazly:   [Compara con cache] "Mucho mejor! Comparado con la anterior..."
+         ✅ Compara automáticamente sin reenviar la primera foto
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🎭 CASO 3: Proyecto de Branding Completo                                   │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+Usuario: "Crea un logo para 'Tech Startup'"
+Dazly:   [Genera logo azul/moderno]
+
+Usuario: "Ahora un banner para LinkedIn con el mismo estilo"
+Dazly:   [Lee estilo del logo] "Banner creado manteniendo coherencia..."
+         ✅ Mantiene consistencia de estilo automáticamente
+
+Usuario: "Y una tarjeta de presentación"
+Dazly:   [Lee logo + banner] "Tarjeta con mismo branding..."
+         ✅ Todo el proyecto tiene estilo cohesivo
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                          ENDPOINTS DE LA API                              ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+POST /api/ai/generate
+─────────────────────────────────────────────────────────────────────────────
+Request:
+{
+  "prompt": "Mejora los colores de esta imagen",
+  "projectId": "project-123",
+  "images": [{
+    "base64Data": "iVBORw0KG...",
+    "mimeType": "image/jpeg"
+  }]
+}
+
+Response:
+{
+  "success": true,
+  "imageUrl": "data:image/png;base64,...",
+  "imagesRemaining": 45,
+  "aiMessage": {
+    "content": "He mejorado los colores basándome en...",
+    "imageUrl": "..."
+  },
+  "cacheInfo": {                      ← 🆕 Nuevo!
+    "cacheId": "projects/.../cachedContents/abc123",
+    "isNewCache": false,              ← false = reutilizó caché
+    "expiresAt": "2024-01-20T15:30:00Z",
+    "usedCache": true                 ← true = ahorró tokens ⚡
+  }
+}
+
+POST /api/ai/clear-cache
+─────────────────────────────────────────────────────────────────────────────
+Request:
+{
+  "projectId": "project-123"
+}
+
+Response:
+{
+  "success": true,
+  "message": "Memoria del proyecto reseteada"
+}
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                          CHECKLIST DE INSTALACIÓN                         ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+□ 1. Backup de archivos originales
+     • vertexAI.js → vertexAI_backup.js
+     • ai.js → ai_backup.js
+     • schema.prisma → schema_backup.prisma
+
+□ 2. Actualizar Prisma Schema
+     • cp schema_with_cache.prisma schema.prisma
+
+□ 3. Reemplazar servicios
+     • cp vertexAI_with_cache.js vertexAI.js
+
+□ 4. Reemplazar rutas
+     • cp ai_with_cache.js ai.js
+
+□ 5. Regenerar Prisma Client
+     • npx prisma generate
+
+□ 6. Aplicar cambios a BD
+     • npx prisma db push
+
+□ 7. Reiniciar servidor
+     • npm run dev
+
+□ 8. Probar con Postman/cURL
+     • Enviar 2-3 mensajes al mismo projectId
+     • Verificar cacheInfo en respuesta
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                              TROUBLESHOOTING                              ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+❌ Error: "cached content not found"
+└─ Causa: El caché expiró (TTL: 1 hora)
+└─ Solución: Se recrea automáticamente
+
+❌ Error: "insufficient permissions"
+└─ Causa: Service Account sin permisos
+└─ Solución: Agregar rol "Vertex AI Service Agent" en Google Cloud
+
+❌ Caché no se reutiliza
+└─ Causa: geminiCacheId no se guarda en BD
+└─ Solución: Verificar migración de schema
+
+❌ Frontend no muestra cacheInfo
+└─ Causa: Usando ruta vieja
+└─ Solución: Verificar que use /api/ai/generate actualizado
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║                              PRÓXIMOS PASOS                               ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+1. 🚀 Ejecutar: INSTALL_CONTEXT_CACHING.bat
+
+2. 📖 Leer: CONTEXT_CACHING_GUIDE.md
+
+3. 💻 Ver: FRONTEND_EXAMPLES.jsx
+
+4. 🧪 Probar con Postman
+
+5. 🎉 ¡Disfrutar del ahorro de tokens!
+

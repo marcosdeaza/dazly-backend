@@ -1,0 +1,29 @@
+node_modules
+# Keep environment variables out of version control
+.env
+.env.local
+# .env.production se SUBE a GitHub para Railway
+.env.*.local
+
+# Google Cloud credentials - IMPORTANTE: No subir a GitHub
+dazly-api-f81d60806910.json
+dazly-84a82-*.json
+*service-account*.json
+
+/generated/prisma
+
+# Build outputs
+dist/
+build/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
