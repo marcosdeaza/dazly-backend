@@ -1,0 +1,34 @@
+﻿{
+  "contextCaching": {
+    "enabled": true,
+    "version": "1.0.0",
+    "features": {
+      "persistentMemory": true,
+      "imageContextRetention": true,
+      "automaticCacheRenewal": true,
+      "projectIsolation": true
+    },
+    "configuration": {
+      "cacheTTL": "3600s",
+      "model": "gemini-1.5-flash-001",
+      "maxCacheSize": "unlimited",
+      "autoCleanup": false
+    },
+    "endpoints": {
+      "generate": "/api/ai/generate",
+      "clearCache": "/api/ai/clear-cache",
+      "cacheStats": "/api/ai/cache-stats (TODO)"
+    },
+    "database": {
+      "newFields": [
+        "Project.geminiCacheId",
+        "Project.cacheExpiry"
+      ]
+    },
+    "performance": {
+      "tokenSavings": "~90%",
+      "responseTimeImprovement": "~40%",
+      "costReduction": "~85%"
+    }
+  }
+}

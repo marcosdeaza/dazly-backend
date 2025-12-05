@@ -1,0 +1,72 @@
+# Dependencies
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore
+
+# Backup files
+*_backup*
+*_BACKUP_*
+*.backup
+*.backup.*
+*_broken.*
+*_fixed.*
+*_old.*
+*OLD.*
+*.bak
+
+# Test files
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+test/
+tests/
+__tests__/
+
+# Documentation
+*.md
+!README.md
+
+# Scripts locales
+*.bat
+*.sh
+VERIFY_*.bat
+CONFIGURE_*.bat
+INSTALL_*.bat
+QUICK_START*.bat
+
+# Credenciales locales (no debe estar en Docker)
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+!railway.json
+
+# Prisma
+prisma/dev.db
+prisma/*.db

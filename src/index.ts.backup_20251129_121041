@@ -1,0 +1,789 @@
+import express from 'express';
+import cors from 'cors';
+import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+// --- IMPORTS PARA GOOGLE ---
+import passport from 'passport';
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+
+// --- CONFIGURACIÃƒÆ’Ã¢â‚¬Å“N INICIAL ---
+const app = express();
+const prisma = new PrismaClient();
+
+// --- MIDDLEWARES ---
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true })); 
+app.use(cors({
+  origin: [
+    process.env.FRONTEND_URL || 'http://localhost:8080',
+    'http://localhost:5173',
+    'http://127.0.0.1:8080',
+    'http://127.0.0.1:5173'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+ 
+
+// --- INICIALIZAR Y CONFIGURAR PASSPORT ---
+app.use(passport.initialize());
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID!, // La llave del .env
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!, // La llave del .env
+      
+      // AHORA APUNTA A TU BACKEND (8081)
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:8081/api/auth/google/callback", 
+    },
+    async (_accessToken, _refreshToken, profile, done) => {
+      // Esta funciÃƒÆ’Ã‚Â³n se llama cuando Google nos devuelve al usuario
+      try {
+        const email = profile.emails?.[0].value;
+        if (!email) {
+          return done(new Error("No se encontrÃƒÆ’Ã‚Â³ email en el perfil de Google"));
+        }
+
+        // 1. Buscar si el usuario ya existe en nuestra BD
+        let user = await prisma.user.findUnique({
+          where: { email: email },
+        });
+
+        if (user) {
+          // Si existe pero se registrÃƒÆ’Ã‚Â³ con email, actualizamos su 'provider'
+          if (user.provider === 'email') {
+            user = await prisma.user.update({
+              where: { id: user.id },
+              data: { provider: 'google' }, // Marcamos que ahora tambiÃƒÆ’Ã‚Â©n usa Google
+            });
+          }
+          // Si ya existe (con google o email), lo pasamos
+          return done(null, user);
+        }
+
+        // 2. Si no existe, lo creamos
+        const newUser = await prisma.user.create({
+          data: {
+            email: email,
+            provider: 'google',
+            plan: 'free',
+            imagesRemaining: 3,
+            imagesUsedThisMonth: 0,
+            subscriptionStatus: 'active'
+          },
+        });
+
+        return done(null, newUser); // Pasamos el usuario nuevo
+
+      } catch (error) {
+        return done(error as Error);
+      }
+    }
+  )
+);
+
+
+// --- RUTA DE PRUEBA ---
+app.get('/', (_req, res) => {
+  res.send('Ãƒâ€šÃ‚Â¡El motor de Dazly API estÃƒÆ’Ã‚Â¡ encendido! ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥');
+});
+
+// --- RUTA DE REGISTRO (Email/Pass) ---
+app.post('/api/auth/register', async (req, res): Promise<any> => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email y contraseÃƒÆ’Ã‚Â±a son requeridos' });
+    }
+    const existingUser = await prisma.user.findUnique({
+      where: { email: email },
+    });
+    if (existingUser) {
+      return res.status(400).json({ error: 'Ese email ya estÃƒÆ’Ã‚Â¡ en uso' });
+    }
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = await prisma.user.create({
+      data: {
+        email: email,
+        password: hashedPassword,
+        provider: 'email',
+        plan: 'free',
+        imagesRemaining: 3,
+        imagesUsedThisMonth: 0,
+        subscriptionStatus: 'active'
+      },
+    });
+    const jwtSecret = process.env.JWT_SECRET || "MI_PALABRA_SECRETA_PROVISIONAL";
+    const token = jwt.sign(
+      { 
+        userId: newUser.id, 
+        email: newUser.email,
+        plan: newUser.plan,
+        imagesRemaining: newUser.imagesRemaining,
+        imagesUsedThisMonth: newUser.imagesUsedThisMonth,
+        subscriptionStatus: newUser.subscriptionStatus
+      },
+      jwtSecret,
+      { expiresIn: '7d' }
+    );
+    console.log(`Nuevo usuario registrado: ${newUser.email}`);
+    return res.status(201).json({
+      message: 'Usuario registrado correctamente',
+      token: token,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        plan: newUser.plan,
+        imagesRemaining: newUser.imagesRemaining,
+        imagesUsedThisMonth: newUser.imagesUsedThisMonth,
+        subscriptionStatus: newUser.subscriptionStatus
+      }
+    });
+  } catch (error) {
+    console.error("Error en /api/auth/register:", error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// --- RUTA DE LOGIN (Email/Pass) ---
+app.post('/api/auth/login', async (req, res): Promise<any> => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email y contraseÃƒÆ’Ã‚Â±a son requeridos' });
+    }
+    const user = await prisma.user.findUnique({
+      where: { email: email },
+    });
+    if (!user || !user.password) {
+      // Si el email no existe O no tiene contraseÃƒÆ’Ã‚Â±a (es de Google)
+      return res.status(401).json({ error: 'Credenciales incorrectas' });
+    }
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.status(401).json({ error: 'Credenciales incorrectas' });
+    }
+    const jwtSecret = process.env.JWT_SECRET || "MI_PALABRA_SECRETA_PROVISIONAL";
+    const token = jwt.sign(
+      { 
+        userId: user.id, 
+        email: user.email,
+        plan: user.plan,
+        imagesRemaining: user.imagesRemaining,
+        imagesUsedThisMonth: user.imagesUsedThisMonth,
+        subscriptionStatus: user.subscriptionStatus
+      },
+      jwtSecret,
+      { expiresIn: '7d' }
+    );
+    console.log(`Usuario logueado: ${user.email}`);
+    res.status(200).json({
+      message: 'Login correcto',
+      token: token,
+      user: {
+        id: user.id,
+        email: user.email,
+        plan: user.plan,
+        imagesRemaining: user.imagesRemaining,
+        imagesUsedThisMonth: user.imagesUsedThisMonth,
+        subscriptionStatus: user.subscriptionStatus
+      }
+    });
+  } catch (error) {
+    console.error("Error en /api/auth/login:", error);
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+
+// --- NUEVAS RUTAS PARA EL LOGIN CON GOOGLE ---
+
+// Esta es la ruta a la que el botÃƒÆ’Ã‚Â³n del frontend llamarÃƒÆ’Ã‚Â¡
+app.get(
+  '/api/auth/google',
+  passport.authenticate('google', { 
+    scope: ['profile', 'email'], 
+    session: false 
+  })
+);
+
+// Esta es la ruta a la que Google nos redirige (el "callback")
+app.get(
+  '/api/auth/google/callback',
+  passport.authenticate('google', { 
+    // AHORA APUNTA A TU FRONTEND (8080)
+    failureRedirect: 'http://localhost:8080/login?error=true', 
+    session: false 
+  }),
+  (req, res) => {
+    // Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Â°XITO!
+    const user: any = req.user;
+
+    // 1. Creamos nuestro propio "Pase VIP" (JWT Token) para Dazly
+    const jwtSecret = process.env.JWT_SECRET || "MI_PALABRA_SECRETA_PROVISIONAL";
+    
+    const token = jwt.sign(
+      { 
+        userId: user.id,
+        email: user.email,
+        plan: user.plan,
+        imagesRemaining: user.imagesRemaining,
+        imagesUsedThisMonth: user.imagesUsedThisMonth,
+        subscriptionStatus: user.subscriptionStatus
+      },
+      jwtSecret,
+      { expiresIn: '7d' }
+    );
+
+    // 2. Redirigimos al usuario DE VUELTA AL FRONTEND
+    console.log(`Usuario logueado con Google: ${user.email}`);
+    
+    // AHORA APUNTA A TU FRONTEND (8080)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+    res.redirect(`${frontendUrl}/login/callback?token=${token}`);
+  }
+);
+
+// --- MIDDLEWARE DE AUTENTICACIÃƒÆ’Ã¢â‚¬Å“N PARA OTRAS RUTAS ---
+const authenticateToken = (req: any, res: any, next: any) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (token == null) return res.sendStatus(401);
+
+  jwt.verify(token, process.env.JWT_SECRET || "MI_PALABRA_SECRETA_PROVISIONAL", (err: any, user: any) => {
+    if (err) return res.sendStatus(403);
+    req.user = user;
+    next();
+  });
+};
+
+// --- RUTA PROTEGIDA DE EJEMPLO ---
+app.get('/api/user/profile', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId },
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+    return res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        plan: user.plan,
+        imagesRemaining: user.imagesRemaining,
+        imagesUsedThisMonth: user.imagesUsedThisMonth,
+        subscriptionStatus: user.subscriptionStatus
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: 'Error obteniendo perfil' });
+  }
+});
+
+// --- RUTA PARA CAMBIAR CONTRASEÃƒÆ’Ã¢â‚¬ËœA ---
+app.put('/api/auth/change-password', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Solicitud de cambio de contraseÃƒÆ’Ã‚Â±a recibida para usuario:', req.user.userId);
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'ContraseÃƒÆ’Ã‚Â±a actual y nueva contraseÃƒÆ’Ã‚Â±a son requeridas' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'La nueva contraseÃƒÆ’Ã‚Â±a debe tener al menos 6 caracteres' });
+    }
+
+    // Buscar usuario
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    // Verificar que el usuario tenga contraseÃƒÆ’Ã‚Â±a (no OAuth)
+    if (!user.password) {
+      return res.status(400).json({ error: 'Este usuario no tiene contraseÃƒÆ’Ã‚Â±a. Usa el login de Google.' });
+    }
+
+    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å“ Verificando contraseÃƒÆ’Ã‚Â±a actual...');
+
+    // Verificar contraseÃƒÆ’Ã‚Â±a actual
+    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+
+    if (!isValidPassword) {
+      console.log('ÃƒÂ¢Ã‚ÂÃ…â€™ ContraseÃƒÆ’Ã‚Â±a actual incorrecta');
+      return res.status(401).json({ error: 'La contraseÃƒÆ’Ã‚Â±a actual es incorrecta' });
+    }
+
+    console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ ContraseÃƒÆ’Ã‚Â±a actual vÃƒÆ’Ã‚Â¡lida, actualizando...');
+
+    // Hashear nueva contraseÃƒÆ’Ã‚Â±a
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+    // Actualizar contraseÃƒÆ’Ã‚Â±a
+    await prisma.user.update({
+      where: { id: req.user.userId },
+      data: { password: hashedNewPassword }
+    });
+
+    console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ ContraseÃƒÆ’Ã‚Â±a actualizada exitosamente para:', user.email);
+    res.json({ message: 'ContraseÃƒÆ’Ã‚Â±a actualizada exitosamente' });
+
+  } catch (error: any) {
+    console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error al cambiar contraseÃƒÆ’Ã‚Â±a:', error);
+    
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ error: 'Token invÃƒÆ’Ã‚Â¡lido' });
+    } else if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ error: 'Token expirado' });
+    }
+    
+    return res.status(500).json({ error: 'Error interno del servidor' });
+  }
+});
+
+// ============================================
+// RUTAS DE PROYECTOS
+// ============================================
+
+// Obtener proyectos del usuario
+app.get('/api/projects', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    let projects = await prisma.project.findMany({
+      where: { userId: req.user.userId },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' }
+        }
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    // Si el usuario no tiene proyectos, crear uno por defecto
+    if (projects.length === 0) {
+      console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â Usuario sin proyectos, creando proyecto por defecto...');
+      
+      const defaultProject = await prisma.project.create({
+        data: {
+          name: 'Mi Primer Proyecto',
+          description: 'Proyecto creado automÃƒÆ’Ã‚Â¡ticamente',
+          userId: req.user.userId
+        },
+        include: {
+          messages: true
+        }
+      });
+
+      projects = [defaultProject];
+      console.log(`ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Proyecto por defecto creado: ${defaultProject.id}`);
+    }
+
+    // Log para debug: contar mensajes con imÃƒÆ’Ã‚Â¡genes
+    const totalMessagesWithImages = projects.reduce((acc, p) => 
+      acc + p.messages.filter(m => m.imageUrl).length, 0
+    );
+    console.log(`ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  GET /api/projects - Mensajes con imageUrl: ${totalMessagesWithImages}`);
+
+    return res.json({ projects });
+  } catch (error) {
+    console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error obteniendo proyectos:', error);
+    return res.status(500).json({ error: 'Error obteniendo proyectos' });
+  }
+});
+
+// Crear nuevo proyecto
+app.post('/api/projects', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    const { name, description } = req.body;
+
+    if (!name) {
+      return res.status(400).json({ error: 'Nombre del proyecto requerido' });
+    }
+
+    const project = await prisma.project.create({
+      data: {
+        name,
+        description: description || '',
+        userId: req.user.userId
+      }
+    });
+
+    console.log(`ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Proyecto creado: ${project.name} (ID: ${project.id})`);
+    return res.status(201).json({ project });
+  } catch (error) {
+    console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error creando proyecto:', error);
+    return res.status(500).json({ error: 'Error creando proyecto' });
+  }
+});
+
+// Actualizar proyecto
+app.put('/api/projects/:id', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    const { id } = req.params;
+    const { name, description } = req.body;
+
+    // Verificar que el proyecto pertenece al usuario
+    const existingProject = await prisma.project.findFirst({
+      where: {
+        id: id,
+        userId: req.user.userId
+      }
+    });
+
+    if (!existingProject) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    const project = await prisma.project.update({
+      where: { id },
+      data: {
+        name: name || existingProject.name,
+        description: description !== undefined ? description : existingProject.description,
+        updatedAt: new Date()
+      }
+    });
+
+    return res.json({ project });
+  } catch (error) {
+    console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error actualizando proyecto:', error);
+    return res.status(500).json({ error: 'Error actualizando proyecto' });
+  }
+});
+
+// Eliminar proyecto
+app.delete('/api/projects/:id', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    const { id } = req.params;
+
+    // Verificar que el proyecto pertenece al usuario
+    const existingProject = await prisma.project.findFirst({
+      where: {
+        id: id,
+        userId: req.user.userId
+      }
+    });
+
+    if (!existingProject) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    await prisma.project.delete({
+      where: { id }
+    });
+
+    return res.json({ message: 'Proyecto eliminado correctamente' });
+  } catch (error) {
+    console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error eliminando proyecto:', error);
+    return res.status(500).json({ error: 'Error eliminando proyecto' });
+  }
+});
+
+// Obtener mensajes de un proyecto
+app.get('/api/projects/:id/messages', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    const { id } = req.params;
+
+    // Verificar que el proyecto pertenece al usuario
+    const project = await prisma.project.findFirst({
+      where: {
+        id: id,
+        userId: req.user.userId
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: 'asc' }
+        }
+      }
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    return res.json({ messages: project.messages });
+  } catch (error) {
+    console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error obteniendo mensajes:', error);
+    return res.status(500).json({ error: 'Error obteniendo mensajes' });
+  }
+});
+
+// Agregar mensaje a un proyecto
+app.post('/api/projects/:id/messages', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    const { id } = req.params;
+    const { role, content, imageUrl, imagePrompt } = req.body;
+
+    // Verificar que el proyecto pertenece al usuario
+    const project = await prisma.project.findFirst({
+      where: {
+        id: id,
+        userId: req.user.userId
+      }
+    });
+
+    if (!project) {
+      return res.status(404).json({ error: 'Proyecto no encontrado' });
+    }
+
+    const message = await prisma.message.create({
+      data: {
+        projectId: id,
+        role: role,
+        content: content,
+        imageUrl: imageUrl || null,
+        imagePrompt: imagePrompt || null
+      }
+    });
+
+    // Actualizar updatedAt del proyecto
+    await prisma.project.update({
+      where: { id },
+      data: { updatedAt: new Date() }
+    });
+
+    console.log(`ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Mensaje agregado al proyecto ${project.name}`);
+    return res.status(201).json({ message });
+  } catch (error) {
+    console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error agregando mensaje:', error);
+    return res.status(500).json({ error: 'Error agregando mensaje' });
+  }
+});
+
+console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Rutas de proyectos registradas');
+
+// ============================================
+// RUTA DE IA CON GEMINI REAL
+// ============================================
+
+// Importar el servicio de Vertex AI
+const vertexAI = require('./services/vertexAI');
+const visualMemory = require('./services/visualMemory');
+
+app.post('/api/ai/generate', authenticateToken, async (req: any, res): Promise<any> => {
+  try {
+    console.log('ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ PeticiÃƒÆ’Ã‚Â³n recibida en /api/ai/generate');
+    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â Prompt:', req.body.prompt);
+    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ‚Â¤ Usuario:', req.user.email);
+    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬Â Ã¢â‚¬Â ProjectId recibido:', req.body.projectId);
+    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Body completo:', JSON.stringify(req.body));
+    
+    const { prompt, projectId } = req.body;
+    
+    if (!prompt || !projectId) {
+      return res.status(400).json({ error: 'Prompt y projectId requeridos' });
+    }
+
+    // Obtener usuario actualizado de la BD
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.userId }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    console.log(`ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ‚Â¤ Usuario: ${user.email} - Plan: ${user.plan} - CrÃƒÆ’Ã‚Â©ditos: ${user.imagesRemaining}`);
+
+    // NO validar crÃƒÆ’Ã‚Â©ditos aquÃƒÆ’Ã‚Â­ - solo validamos despuÃƒÆ’Ã‚Â©s si va a generar imagen
+    // El chat normal y anÃƒÆ’Ã‚Â¡lisis de imÃƒÆ’Ã‚Â¡genes son GRATIS
+
+    // Verificar que el proyecto existe y pertenece al usuario
+    const project = await prisma.project.findFirst({
+      where: {
+        id: projectId,
+        userId: user.id
+      }
+    });
+
+    if (!project) {
+      console.log(`ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Proyecto no encontrado. ProjectId: ${projectId}, UserId: ${user.id}`);
+      
+      // Listar proyectos del usuario para debugging
+      const userProjects = await prisma.project.findMany({
+        where: { userId: user.id },
+        select: { id: true, name: true }
+      });
+      
+      console.log(`ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã¢â‚¬Â¹ Proyectos del usuario:`, userProjects);
+      
+      return res.status(404).json({ 
+        error: 'Proyecto no encontrado',
+        details: 'El proyecto no existe o no pertenece a tu usuario',
+        availableProjects: userProjects
+      });
+    }
+
+    console.log('ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Llamando a Gemini...');
+
+    // Procesar imágenes del usuario
+    let images = [];
+    if (req.body.images && req.body.images.length > 0) {
+      console.log(📸 Usuario envió +${req.body.images.length} imagen(es));
+      images = req.body.images;
+    }
+
+    // 🧠 MEMORIA VISUAL - Sistema inteligente
+    console.log('🧠 Obteniendo memoria visual del proyecto...');
+    const visualContext = await visualMemory.getVisualContext(projectId, 5);
+    const useContext = visualMemory.shouldUseVisualContext(prompt, visualContext.totalImages > 0);
+    const systemPrompt = visualMemory.buildEnhancedSystemPrompt(useContext);
+    const contentParts = visualMemory.prepareGeminiContent(prompt, images, visualContext, useContext);
+
+    console.log('🚀 Llamando a Gemini con memoria visual...');
+
+    // Cargar últimos 5 mensajes para contexto conversacional
+    const conversationHistory = await prisma.message.findMany({
+      where: { projectId: project.id },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+      select: { role: true, content: true }
+    });
+
+    conversationHistory.reverse();
+    console.log(🧠 Contexto: +${conversationHistory.length} mensajes);
+    
+    // Llamar a Gemini con memoria visual + contexto
+    const geminiResponse = await vertexAI.generateChatResponse(prompt, {
+      temperature: 0.9,
+      maxTokens: 2048,
+      images: images,
+      conversationHistory: conversationHistory,
+      systemPrompt: systemPrompt,
+      contentParts: contentParts
+    });
+
+    if (!geminiResponse.success) {
+      throw new Error(geminiResponse.error || 'Error generando respuesta de IA');
+    }
+
+    const aiResponseText = geminiResponse.text;
+    console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Respuesta de Gemini recibida:', aiResponseText.slice(0, 100) + '...');
+
+    // ÃƒÂ¢Ã…â€œÃ‚Â¨ SIMPLIFICADO: Extraer imagen directamente de la respuesta de Gemini (si la generÃƒÆ’Ã‚Â³)
+    let generatedImageUrl = geminiResponse.imageUrl || null;
+    let imageBase64 = geminiResponse.imageBase64 || null;
+    
+    // Detectar si el prompt querÃƒÆ’Ã‚Â­a generar una imagen
+    const promptWantsImage = !!generatedImageUrl;
+    
+    if (generatedImageUrl) {
+      console.log('ÃƒÂ°Ã…Â¸Ã…Â½Ã‚Â¨ Gemini generÃƒÆ’Ã‚Â³ una imagen');
+    }
+
+    // Guardar mensaje del usuario CON imágenes en BD
+    await prisma.message.create({
+      data: {
+        projectId: project.id,
+        role: 'user',
+        content: prompt,
+        uploadedImages: images.length > 0 ? JSON.stringify(images) : null
+      }
+    });
+    
+    console.log(✅ Mensaje usuario guardado con +${images.length} imágenes en BD);
+
+    // Guardar mensaje de la IA en BD (con imagen si se generÃƒÆ’Ã‚Â³)
+    const aiMessage = await prisma.message.create({
+      data: {
+        projectId: project.id,
+        role: 'assistant',
+        content: aiResponseText,
+        imageUrl: generatedImageUrl, // URL de la imagen si se generÃƒÆ’Ã‚Â³
+        imagePrompt: promptWantsImage ? prompt : null
+      }
+    });
+
+    // NO descontar crÃƒÆ’Ã‚Â©ditos - modo ilimitado
+    let updatedUser = user;
+    let creditUsed = false;
+
+    if (promptWantsImage && generatedImageUrl) {
+      console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Imagen generada - MODO ILIMITADO (no se descuentan crÃƒÆ’Ã‚Â©ditos)');
+      
+      // Guardar generaciÃƒÆ’Ã‚Â³n en el historial (opcional)
+      await prisma.generation.create({
+        data: {
+          userId: user.id,
+          prompt: prompt,
+          imageUrl: generatedImageUrl || 'data:image/png;base64,...',
+          cost: 0 // 0 porque es gratis
+        }
+      });
+
+      creditUsed = false; // No se usÃƒÆ’Ã‚Â³ crÃƒÆ’Ã‚Â©dito real
+    } else {
+      console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¬ Solo texto, chat normal ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦');
+    }
+
+    // Actualizar updatedAt del proyecto
+    await prisma.project.update({
+      where: { id: project.id },
+      data: { updatedAt: new Date() }
+    });
+
+    console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Respuesta procesada y guardada en BD');
+    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¤ Enviando al frontend - imageUrl:', generatedImageUrl ? 'SÃƒÆ’Ã‚Â' : 'NO');
+    console.log('ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¤ ImageUrl length:', generatedImageUrl?.length || 0);
+
+    return res.json({
+      success: true,
+      imageUrl: generatedImageUrl, // URL de la imagen generada (si existe)
+      imageBase64: imageBase64, // Base64 de la imagen (si existe)
+      imagesRemaining: updatedUser.imagesRemaining,
+      creditUsed: creditUsed,
+      aiMessage: {
+        id: aiMessage.id,
+        role: 'assistant',
+        content: aiResponseText,
+        imageUrl: generatedImageUrl, // Incluir la imagen en el mensaje
+        imagePrompt: promptWantsImage ? prompt : null,
+        createdAt: aiMessage.createdAt
+      },
+      metadata: {
+        model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+        modelType: 'unified',
+        tokensUsed: geminiResponse.metadata?.tokensUsed || 0,
+        hasImage: !!generatedImageUrl,
+        imagesReceived: images.length,
+        contextMessages: conversationHistory.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+  } catch (error: any) {
+    console.error('ÃƒÂ¢Ã‚ÂÃ…â€™ Error en /api/ai/generate:', error);
+    return res.status(500).json({ 
+      error: 'Error generando respuesta de IA',
+      details: error.message 
+    });
+  }
+});
+
+console.log('ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Ruta /api/ai/generate registrada con Gemini REAL');
+
+// Health check
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// --- ARRANCAR EL SERVIDOR ---
+const PORT = process.env.PORT || 8081;
+app.listen(PORT, () => {
+  console.log(`ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â± Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:8080'}`);
+  console.log(`ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Ëœ JWT Secret: ${process.env.JWT_SECRET ? 'Configured' : 'Missing'}`);
+  console.log(`ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â Google OAuth: ${process.env.GOOGLE_CLIENT_ID ? 'Configured' : 'Missing'}`);
+});

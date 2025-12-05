@@ -1,0 +1,71 @@
+// Dazly AI Platform - Database Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   String   @id @default(cuid())
+  email                String   @unique
+  password             String?
+  provider             String   @default("email")
+  plan                 String   @default("free")
+  imagesRemaining      Int      @default(0)
+  imagesUsedThisMonth  Int      @default(0)
+  subscriptionStatus   String   @default("inactive")
+  subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  projects Project[]
+  
+  @@map("users")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  userId      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@map("projects")
+}
+
+model Message {
+  id          String   @id @default(cuid())
+  role        String   // "user" | "assistant"
+  content     String
+  imageUrl    String?
+  imagePrompt String?
+  uploadedImages  String?
+  projectId   String
+  createdAt   DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model Generation {
+  id        String   @id @default(cuid())
+  userId    String
+  prompt    String
+  imageUrl  String
+  cost      Int      @default(1) // NÃºmero de crÃ©ditos usados
+  createdAt DateTime @default(now())
+
+  @@map("generations")
+}
