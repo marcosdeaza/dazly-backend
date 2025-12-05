@@ -10,7 +10,10 @@ const prisma = new PrismaClient();
 
 // Plan mapping to Stripe Price IDs
 const STRIPE_PRICE_IDS = {
+<<<<<<< HEAD
   xmas: process.env.STRIPE_XMAS_PRICE_ID || 'price_xmas_placeholder', // 🎄 Plan Navidad
+=======
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
   pulse: process.env.STRIPE_PULSE_PRICE_ID || 'price_pulse_placeholder',
   flow: process.env.STRIPE_FLOW_PRICE_ID || 'price_flow_placeholder',
   summit: process.env.STRIPE_SUMMIT_PRICE_ID || 'price_summit_placeholder',
@@ -20,8 +23,12 @@ const STRIPE_PRICE_IDS = {
 
 // Plan images mapping
 const PLAN_IMAGES = {
+<<<<<<< HEAD
   free: 5, // 🎁 Actualizado: 5 imágenes gratis al mes
   xmas: 25, // 🎄 Plan especial Navidad
+=======
+  free: 3,
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
   pulse: 50,
   flow: 150,
   summit: 350,

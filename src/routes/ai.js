@@ -259,6 +259,7 @@ router.post('/generate', authenticateToken, async (req, res) => {
         }
       });
 
+<<<<<<< HEAD
       // 🚫 Verificar si es violación de políticas de contenido
       let errorMessage = `❌ Error generando imagen. Por favor, intenta de nuevo. No se ha cobrado ningún crédito.`;
       let userFriendlyError = 'Error generando imagen';
@@ -269,11 +270,17 @@ router.post('/generate', authenticateToken, async (req, res) => {
         console.log('🚫 Contenido bloqueado por violar políticas de seguridad');
       }
 
+=======
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
       // Mensaje de error sin cobrar
       const aiMessage = await prisma.message.create({
         data: {
           role: 'assistant',
+<<<<<<< HEAD
           content: errorMessage,
+=======
+          content: `❌ Error generando imagen. Por favor, intenta de nuevo. No se ha cobrado ningún crédito.`,
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
           imageUrl: null,
           imagePrompt: prompt,
           projectId: projectId
@@ -285,7 +292,11 @@ router.post('/generate', authenticateToken, async (req, res) => {
 
       res.json({
         success: false,
+<<<<<<< HEAD
         error: userFriendlyError,
+=======
+        error: 'Error generando imagen',
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
         imagesRemaining: user.imagesRemaining, // Créditos sin cambios
         aiMessage: {
           id: aiMessage.id,
@@ -295,7 +306,11 @@ router.post('/generate', authenticateToken, async (req, res) => {
           imagePrompt: aiMessage.imagePrompt,
           createdAt: aiMessage.createdAt
         },
+<<<<<<< HEAD
         errorDetails: aiError.message === 'CONTENT_POLICY_VIOLATION' ? 'Contenido bloqueado por políticas de seguridad' : aiError.message
+=======
+        errorDetails: aiError.message
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
       });
     }
 

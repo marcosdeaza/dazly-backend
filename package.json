@@ -20,6 +20,10 @@
   "dependencies": {
     "@prisma/client": "^6.19.0",
     "@types/express": "^5.0.5",
+<<<<<<< HEAD
+=======
+    "@types/node": "^24.10.1",
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -31,17 +35,28 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "prisma": "^6.19.0",
+<<<<<<< HEAD
     "stripe": "^20.0.0"
+=======
+    "stripe": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/jsonwebtoken": "^9.0.10",
+<<<<<<< HEAD
     "@types/node": "^24.10.1",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
+=======
+    "@types/passport": "^1.0.17",
+    "@types/passport-google-oauth20": "^2.0.17"
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
   },
   "engines": {
     "node": ">=18.0.0"

@@ -44,6 +44,7 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+<<<<<<< HEAD
 // Límites de proyectos por plan
 const PROJECT_LIMITS = {
   'free': 1,      // 🎁 Actualizado: 1 proyecto gratis
@@ -55,6 +56,8 @@ const PROJECT_LIMITS = {
   'infinity': 100 // 100 proyectos
 };
 
+=======
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
 // Crear nuevo proyecto
 router.post('/', authenticateToken, async (req, res) => {
   try {
@@ -64,6 +67,7 @@ router.post('/', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'El nombre del proyecto es requerido' });
     }
 
+<<<<<<< HEAD
     // ✅ Verificar límite de proyectos según el plan del usuario
     const userPlan = req.user.plan || 'free';
     const maxProjects = PROJECT_LIMITS[userPlan] || 1;
@@ -83,6 +87,8 @@ router.post('/', authenticateToken, async (req, res) => {
       });
     }
 
+=======
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
     const project = await prisma.project.create({
       data: {
         name,

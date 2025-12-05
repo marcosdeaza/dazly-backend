@@ -1189,6 +1189,7 @@ app.post('/api/ai/enhance-prompt', authenticateToken, async (req: any, res): Pro
     
     console.log('✨ Mejorando prompt:', prompt.slice(0, 100));
     
+<<<<<<< HEAD
     // System prompt ultra-especializado para Dazly
     const enhancerSystemPrompt = `Eres un experto en prompts de generación de imágenes con IA para Dazly.
 
@@ -1203,6 +1204,24 @@ REGLAS IMPORTANTES:
 5. Sé específico en colores, estilos, composición y mood
 
 ESTRUCTURA DE UN BUEN PROMPT:
+=======
+    // System prompt mejorado - NO inventar, solo refinar
+    const enhancerSystemPrompt = `Eres un refinador de prompts para generación de imágenes con IA.
+
+TU MISIÓN:
+Mejorar prompts para hacerlos más claros y específicos, SIN inventar información nueva.
+
+REGLAS ESTRICTAS:
+1. SOLO devuelve el prompt mejorado, SIN explicaciones
+2. NO inventes detalles que el usuario no mencionó
+3. MANTÉN la idea original del usuario
+4. SOLO agrega detalles técnicos básicos (calidad, estilo si no especifica)
+5. Mantén el idioma original (español/inglés)
+6. NO agregues colores específicos si el usuario no los mencionó
+7. NO cambies el concepto o tema principal
+
+LO QUE PUEDES AGREGAR (solo si es útil):
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
 - Sujeto principal (qué es)
 - Estilo visual (fotorrealismo, ilustración, 3D, minimalista, etc.)
 - Colores dominantes y paleta
@@ -1211,6 +1230,7 @@ ESTRUCTURA DE UN BUEN PROMPT:
 - Detalles técnicos (resolución, calidad)
 - Mood o emoción que transmite
 
+<<<<<<< HEAD
 EJEMPLOS DE TRANSFORMACIÓN:
 
 Input: "logo para cafetería"
@@ -1221,6 +1241,32 @@ Output: Banner publicitario de venta de verano, diseño vibrante y llamativo, gr
 
 Input: "paisaje montañas"
 Output: Paisaje épico de montañas nevadas al atardecer, picos majestuosos con nieve brillante, cielo dramático con nubes rosadas y naranjas, luz dorada del sol poniente, lago cristalino en primer plano reflejando las montañas, composición panorámica wide-angle, profundidad de campo amplia, estilo fotorrealista, atmósfera serena y majestuosa, colores cálidos y fríos balanceados
+=======
+EJEMPLOS DE REFINAMIENTO (NO INVENTAR):
+
+Input: "logo para cafetería"
+Output: Logo para cafetería, diseño limpio y profesional, alta calidad vectorial
+
+Input: "banner de venta"
+Output: Banner publicitario de venta, diseño llamativo y legible, alta resolución
+
+Input: "paisaje de montañas al atardecer"
+Output: Paisaje de montañas al atardecer, composición panorámica, iluminación natural, alta calidad fotográfica
+
+Input: "retrato de mujer con sombrero rojo y fondo azul"
+Output: Retrato de mujer con sombrero rojo y fondo azul, iluminación profesional, alta definición
+
+LO QUE PUEDES AGREGAR (solo si no está):
+- Calidad técnica: "alta calidad", "alta resolución", "profesional"
+- Tipo de diseño: "limpio", "moderno", "clásico" (solo si no contradice)
+- Composición básica: "centrado", "panorámico" (solo si es obvio)
+
+LO QUE NUNCA DEBES HACER:
+❌ Agregar colores específicos si el usuario no los mencionó
+❌ Cambiar el tema o concepto principal
+❌ Inventar elementos que no están en el prompt original
+❌ Agregar detalles muy específicos no solicitados
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
 
 CAMPOS DE DISEÑO QUE DOMINAS:
 - Marketing y publicidad (banners, ads, CTA)

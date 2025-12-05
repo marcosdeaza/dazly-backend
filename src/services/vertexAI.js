@@ -299,6 +299,7 @@ IMPORTANTE:
       }
 
       const data = JSON.parse(responseText);
+<<<<<<< HEAD
       console.log('🔥 Gemini response:', JSON.stringify(data).substring(0, 300));
       
       // ⚠️ NUEVO: Verificar si el contenido fue bloqueado por políticas de seguridad
@@ -311,17 +312,29 @@ IMPORTANTE:
           throw new Error('CONTENT_POLICY_VIOLATION');
         }
       }
+=======
+      console.log('Ã°Å¸â€œÂ¥ Gemini response:', JSON.stringify(data).substring(0, 300));
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
       
       if (data.candidates && data.candidates[0] && data.candidates[0].content) {
         const content = data.candidates[0].content;
         const text = content.parts.map(part => part.text).join('');
 
+<<<<<<< HEAD
         console.log('✔️ Chat response generated successfully');
 
         // Detectar si la respuesta incluye una petición de generar imagen
         const hasImageRequest = this.detectImageGenerationRequest(text);
 
         // ✨ Buscar si Gemini generó una imagen en la respuesta
+=======
+        console.log('Ã¢Å“â€¦ Chat response generated successfully');
+
+        // Detectar si la respuesta incluye una peticiÃƒÂ³n de generar imagen
+        const hasImageRequest = this.detectImageGenerationRequest(text);
+
+        // Ã¢Å“Â¨ Buscar si Gemini generÃƒÂ³ una imagen en la respuesta
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
         let imageUrl = null;
         let imageBase64 = null;
         
@@ -330,7 +343,11 @@ IMPORTANTE:
             imageBase64 = part.inlineData.data;
             const mimeType = part.inlineData.mimeType || 'image/png';
             imageUrl = `data:${mimeType};base64,${imageBase64}`;
+<<<<<<< HEAD
             console.log('🖼 Gemini generó imagen inline');
+=======
+            console.log('Ã°Å¸Å½Â¨ Gemini generÃƒÂ³ imagen inline');
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
             break;
           }
         }
@@ -350,7 +367,11 @@ IMPORTANTE:
           }
         };
       } else {
+<<<<<<< HEAD
         console.error('❌ Unexpected response format:', data);
+=======
+        console.error('Ã¢ÂÅ’ Unexpected response format:', data);
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
         throw new Error('Formato de respuesta inesperado de Gemini');
       }
 
@@ -453,6 +474,7 @@ IMPORTANTE:
       }
 
       const data = JSON.parse(responseText);
+<<<<<<< HEAD
       console.log('📦 Response data:', JSON.stringify(data).substring(0, 200));
       
       // ⚠️ NUEVO: Verificar si la imagen fue bloqueada por políticas
@@ -465,13 +487,25 @@ IMPORTANTE:
           throw new Error('CONTENT_POLICY_VIOLATION');
         }
         
+=======
+      console.log('Ã°Å¸â€œÂ¦ Response data:', JSON.stringify(data).substring(0, 200));
+      
+      if (data.predictions && data.predictions[0]) {
+        const prediction = data.predictions[0];
+        
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
         // La imagen viene en base64
         if (prediction.bytesBase64Encoded) {
           const imageBase64 = prediction.bytesBase64Encoded;
           const imageUrl = `data:image/png;base64,${imageBase64}`;
           
+<<<<<<< HEAD
           console.log('✔️ Imagen generada exitosamente con Imagen 3.0');
           console.log('📦 ImageUrl length:', imageUrl.length);
+=======
+          console.log('Ã¢Å“â€¦ Imagen generada exitosamente con Imagen 3.0');
+          console.log('Ã°Å¸â€œÂ¦ ImageUrl length:', imageUrl.length);
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
           
           return {
             success: true,
@@ -484,10 +518,17 @@ IMPORTANTE:
             }
           };
         } else {
+<<<<<<< HEAD
           console.log('⚠️ No bytesBase64Encoded en prediction');
         }
       } else {
         console.log('⚠️ No predictions en response');
+=======
+          console.log('Ã¢Å¡Â Ã¯Â¸Â No bytesBase64Encoded en prediction');
+        }
+      } else {
+        console.log('Ã¢Å¡Â Ã¯Â¸Â No predictions en response');
+>>>>>>> ea0ff45c4b33188167c89bc8f299ff27870f41d1
       }
 
       console.log('Ã¢Å¡Â Ã¯Â¸Â No se pudo extraer imagen, usando fallback');
